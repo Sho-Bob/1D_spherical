@@ -25,7 +25,7 @@ def main():
     """
 
     # Set up grids and time
-    nt = 200      ## number of time steps
+    nt = 600      ## number of time steps
     nfr = 101      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
     CFL = 0.5      ## CFL number to determine time step size
@@ -50,7 +50,7 @@ def main():
     # Define variables (Euler equation)
     rho = np.ones(nr)
     rhou = np.zeros(nr)
-    ur = np.ones(nr)
+    ur = np.zeros(nr)
     p = np.zeros(nr)
     rho_old = rho.copy()
     rhou_old = rhou.copy()
@@ -61,7 +61,7 @@ def main():
     gamma = 1.4 ## Adiabatic index
 
     # Initialization of phi for now, Gaussian pulse
-    rho = np.exp(-(r - 0.5)**2 / 0.1**2)
+    # rho = np.exp(-(r - 0.5)**2 / 0.1**2)
 
     # ur = np.sin(2.0 * np.pi * r) # Sine wave for test: Compession of rho at r = 0.5
     rhou = rho * ur
@@ -88,7 +88,7 @@ def main():
             source_flux = compute_source_flux(r,fr,p_fL,p_fR,dV)
             
             # Compute the rhs
-            rhs = compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, dt)
+            rhs = compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r, dt)
             
             # Update conservative variables
             rho_new = rho + rhs[0,:]
@@ -107,10 +107,12 @@ def main():
             rho_old = rho.copy()
             rhou_old = rhou.copy()
             for rk_step in range(3):
+                sound_speed = np.sqrt(gamma * R * T)
+                max_wave_speed = np.max(np.abs(ur) + sound_speed)
                 ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR = compute_flux_values(ur, rho, p)
                 flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
                 source_flux = compute_source_flux(r,fr,p_fL,p_fR,dV)
-                rhs = compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, dt)
+                rhs = compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r, dt)
                 if rk_step == 0:
                     rho_new = rho_old + rhs[0,:]
                     rhou_new = rhou_old + rhs[1,:]
@@ -217,7 +219,7 @@ def compute_source_flux(r,fr,p_fL,p_fR,dV):
     return source_flux
    
 
-def compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, Delta_t):
+def compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r,Delta_t):
    """ This function computes the rhs of the Euler equations"""
    nfr = flux.shape[1]
    number_of_cells = len(dV)
@@ -225,9 +227,13 @@ def compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, Delta_t):
     raise ValueError("The number of flux locations and the number of grid locations are not consistent")
    
    rhs = np.zeros((2,number_of_cells))
+   flag_force = True
    for i in range(number_of_cells):
        rhs[0,i] = (flux[0,i+1] - flux[0,i]) / dV[i]
-       rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i])
+       if flag_force:
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - 1e-4/r[i]**2 
+       else:
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i])
    return -rhs*Delta_t
 
 if __name__ == "__main__":
