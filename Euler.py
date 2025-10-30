@@ -25,11 +25,11 @@ def main():
     """
 
     # Set up grids and time
-    nt = 800      ## number of time steps
-    nfr = 101      ## number of flux locations
+    nt = 4000      ## number of time steps
+    nfr = 401      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
     CFL = 0.5      ## CFL number to determine time step size
-    fr = np.linspace(0.0, 1.0, nfr) ## flux locations
+    fr = np.linspace(0.0, 6.0, nfr) ## flux locations
     r = np.zeros(nr)                ## grid locations
     flag_analytic = False            ## Flag to compute the analytical solution
     flag_upwind = True              ## Flag to use upwind scheme
@@ -148,7 +148,7 @@ def main():
     plt.xlim(0, np.max(r))
     plt.title('Euler equations in spherical coordinate system')
     plt.legend(loc='upper right')
-    plt.savefig(f'./data/Euler_rho_time_{time[itr]:.2f}.png')
+    # plt.savefig(f'./data/Euler_rho_time_{time[itr]:.2f}.png')
     plt.show()
 
 
