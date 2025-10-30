@@ -1,0 +1,136 @@
+import numpy as np
+from scipy.optimize import fsolve
+import matplotlib.pyplot as plt
+class PengRobinson:
+    def __init__(self, Tc, Pc, omega, M, R=8.314):
+        """
+        Init of PengRobinson EOS class
+        Tc: Critical temperature [K]
+        Pc: Critical pressure [Pa]
+        omega: Acentric factor 
+        M: Molar mass [g/mol]
+        R: Gas constant [J/(mol*K)], default is 8.314
+        """
+        self.Tc = Tc
+        self.Pc = Pc
+        self.omega = omega
+        self.R = R
+        self.Mw = M * 1e-3 # Convert to kg/mol
+        self.Z = 0.0
+        self.V = 0.0
+        
+        # Calculate PR parameters a and b
+        self.a = 0.45724 * (R * Tc)**2 / Pc
+        self.b = 0.07780 * R * Tc / Pc
+        self.kappa = 0.37464 + 1.54226 * omega - 0.26992 * omega**2
+    
+    def Get_P_from_rho_and_T(self, rho, T):
+        """
+        Calculate pressure from density and temperature using PR EOS.
+        """
+        alpha_T = self.alpha_from_T(T)
+        molar_volume = self.Mw/ rho
+        P = (self.R * T) / (molar_volume - self.b) - (self.a * alpha_T) / (molar_volume**2 + 2*self.b*molar_volume - self.b**2)
+        return P
+    
+    def Get_rho_from_P_and_T(self, P, T):
+        """
+        Calculate density from pressure and temperature using PR EOS.   
+        """
+        self.calc_Z(P, T)
+        rho = self.Mw / self.V
+        return rho
+    
+    def alpha_from_T(self, T):
+        Tr = T / self.Tc
+        return (1.0 + self.kappa * (1.0 - np.sqrt(Tr)))**2
+    
+    def calc_Z(self, P, T):
+        """
+        Calculate compressibility factor Z by solving the PR cubic equation.
+        
+        The cubic equation in Z is:
+        Z^3 + (B-1)*Z^2 + (A - 3*B^2 - 2*B)*Z + (B^3 + B^2 - A*B) = 0
+    
+        """
+        alpha_T = self.alpha_from_T(T)
+        A = self.a * alpha_T * P / (self.R * T)**2
+        B = self.b * P / (self.R * T)
+        
+        # Coefficients of cubic equation: Z^3 + c2*Z^2 + c1*Z + c0 = 0
+        c2 = B - 1.0
+        c1 = A - 3.0*B**2 - 2.0*B
+        c0 = B**3 + B**2 - A*B
+        
+        # Solve cubic equation
+        coeffs = [1.0, c2, c1, c0]
+        roots = np.roots(coeffs)
+        real_roots = roots[np.abs(roots.imag) < 1e-10].real
+        
+        if len(real_roots) == 0:
+            raise ValueError("No real roots found for compressibility factor")
+        
+        lnphi = np.zeros(real_roots.size)
+        imin = 0
+        for i in range(real_roots.size):
+            V = self.R * T * real_roots[i] / P
+            lnphi[i] = real_roots[i] - 1.0 - np.log(real_roots[i] - B) - A / B * np.log(1.0 + B / real_roots[i])
+            if i > 0 and lnphi[i] < lnphi[imin]:
+                imin = i
+        self.Z = real_roots[imin].real
+        self.V = self.R * T * self.Z / P
+    
+    ## Acoustic speed calculation to be added
+
+# Example usage and test cases
+if __name__ == "__main__":
+    # Test with CO2
+    Tc = 304.1 # K
+    Pc = 7.3825e6
+    omega = 0.225
+    M = 44.01
+    R = 8.314
+    P = 8.0e6
+    
+    # Calculate density using Peng-Robinson EOS
+    T_pr = np.linspace(200, 400, 100)
+    rho_pr = np.zeros_like(T_pr)
+    pr = PengRobinson(Tc, Pc, omega, M, R)
+    for i in range(len(T_pr)):
+        rho_pr[i] = pr.Get_rho_from_P_and_T(P, T_pr[i])
+    
+    # Read NIST data
+    nist_data_path = 'CO2_data_8MPa/NIST_data.xml'
+    T_nist = []
+    rho_nist = []
+    
+    with open(nist_data_path, 'r') as f:
+        lines = f.readlines()
+        # Skip the header line
+        for line in lines[1:]:
+            data = line.strip().split('\t')
+            if len(data) >= 3:
+                try:
+                    temperature = float(data[0])  # Temperature in K
+                    density = float(data[2])       # Density in kg/m³
+                    T_nist.append(temperature)
+                    rho_nist.append(density)
+                except ValueError:
+                    continue
+    
+    # Convert lists to numpy arrays for plotting
+    T_nist = np.array(T_nist)
+    rho_nist = np.array(rho_nist)
+    
+    # Create the plot
+    plt.figure(figsize=(8, 6))
+    plt.plot(T_nist, rho_nist, 'b-', linewidth=2, label='NIST Data (8 MPa)')
+    plt.plot(T_pr, rho_pr, 'r--', linewidth=2, label='Peng-Robinson EOS')
+    plt.xlabel('Temperature (K)', fontsize=12)
+    plt.ylabel('Density (kg/m³)', fontsize=12)
+    plt.xlim(220, 400)
+    plt.title('CO₂ Density vs Temperature at 8 MPa', fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.legend(fontsize=11)
+    plt.tight_layout()
+    plt.show()
