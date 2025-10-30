@@ -25,7 +25,7 @@ def main():
     """
 
     # Set up grids and time
-    nt = 600      ## number of time steps
+    nt = 800      ## number of time steps
     nfr = 101      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
     CFL = 0.5      ## CFL number to determine time step size
@@ -67,6 +67,7 @@ def main():
     rhou = rho * ur
     p = rho * R * T
     rho_initial = rho.copy()
+    p_initial = p.copy()
 
     # Time loop starts here
     for itr in range(1,nt):
@@ -134,16 +135,20 @@ def main():
             rho_analytical[i] = ((r[i]-time[itr-1])/r[i])**2 * np.exp(- (r[i]-time[itr-1]-0.5)**2 / 0.1**2)
 
     # Plot the results
+    # plt.plot(r, p,'k-',label=f'time = {time[itr]:.2f}')
+    # plt.plot(r, p_initial,'k-.', label='initial')
     plt.plot(r, rho,'k-',label=f'time = {time[itr]:.2f}')
     plt.plot(r, rho_initial,'k-.', label='initial')
     if flag_analytic:
         plt.plot(r, rho_analytical,'r--', label='analytical')
     plt.xlabel('r')
     plt.ylabel('rho')
+    # plt.ylabel('Pressure')
     plt.grid(True)
     plt.xlim(0, np.max(r))
     plt.title('Euler equations in spherical coordinate system')
     plt.legend(loc='upper right')
+    plt.savefig(f'./data/Euler_rho_time_{time[itr]:.2f}.png')
     plt.show()
 
 
@@ -231,7 +236,7 @@ def compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r,Delta_t):
    for i in range(number_of_cells):
        rhs[0,i] = (flux[0,i+1] - flux[0,i]) / dV[i]
        if flag_force:
-        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - 1e-4/r[i]**2 
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - 1e-2/r[i]**2 
        else:
         rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i])
    return -rhs*Delta_t
