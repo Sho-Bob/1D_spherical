@@ -111,8 +111,12 @@ def compute_flux_values(ur, phi):
 
    ur_fL[0] = ur[0] ## Neuman BC
    phi_fL[0] = phi[0] ## Neuman BC
+   ur_fR[0] = ur[0] ## 1st order
+   phi_fR[0] = phi[0] ## 1st order
    ur_fR[nfr-1] = ur[ndr-1] ## Neuman BC
    phi_fR[nfr-1] = phi[ndr-1] ## Neuman BC
+   ur_fR[nfr-1] = ur[ndr-1] ## 1st order
+   phi_fR[nfr-1] = phi[ndr-1] ## 1st order
 
    return ur_fL, phi_fL, ur_fR, phi_fR
 
