@@ -31,11 +31,12 @@ def main():
     CFL = 0.5      ## CFL number to determine time step size
     fr = np.linspace(0.0, 1.0, nfr) ## flux locations
     r = np.zeros(nr)                ## grid locations
+    flag_analytic = False            ## Flag to compute the analytical solution
+    flag_upwind = True              ## Flag to use upwind scheme
     dV = np.zeros(nr)               ## Volume of the one cell
     dr = np.zeros(nr)               ## Distance between grid locations
     time = np.zeros(nt)             ## time array
-    flag_analytic = False            ## Flag to compute the analytical solution
-    flag_upwind = True              ## Flag to use upwind scheme
+    Time_step_method = 'RK3'      ## Time step method: Euler or RK3
 
     # Compute grid locations and volumes
     r[0] = 0.5 * (fr[0] + fr[1])
@@ -51,6 +52,8 @@ def main():
     rhou = np.zeros(nr)
     ur = np.ones(nr)
     p = np.zeros(nr)
+    rho_old = rho.copy()
+    rhou_old = rhou.copy()
     rho_new = rho.copy()
     rhou_new = rhou.copy()
     T = 1.0 ## Isothermal
@@ -74,30 +77,53 @@ def main():
         dt = CFL * np.min(dr) / max_wave_speed
         time[itr] = time[itr-1] + dt
 
-        # Explicit Euler method    
-        # Compute the values of phi and ur at the flux locations
-        # Reconstruct only primitive variables (rho, ur, P)
-        ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR = compute_flux_values(ur, rho, p)
-        
-        # Compute the flux
-        flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
-        source_flux = compute_source_flux(r,fr,p_fL,p_fR,dV)
-        
-        # Compute the rhs
-        rhs = compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, dt)
-        
-        # Update conservative variables
-        rho_new = rho + rhs[0,:]
-        rhou_new = rhou + rhs[1,:]
+        if Time_step_method == 'Euler':
+            # Explicit Euler method    
+            # Compute the values of phi and ur at the flux locations
+            # Reconstruct only primitive variables (rho, ur, P)
+            ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR = compute_flux_values(ur, rho, p)
+            
+            # Compute the flux
+            flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
+            source_flux = compute_source_flux(r,fr,p_fL,p_fR,dV)
+            
+            # Compute the rhs
+            rhs = compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, dt)
+            
+            # Update conservative variables
+            rho_new = rho + rhs[0,:]
+            rhou_new = rhou + rhs[1,:]
 
-        # Update primitive variables
-        p_new = rho_new * R * T ## PR EOS later
-        ur_new = rhou_new / rho_new
+            # Update primitive variables
+            p_new = rho_new * R * T ## PR EOS later
+            ur_new = rhou_new / rho_new
 
-        rho = rho_new.copy()
-        rhou = rhou_new.copy()
-        ur = ur_new.copy()
-        p = p_new.copy()
+            rho = rho_new.copy()
+            rhou = rhou_new.copy()
+            ur = ur_new.copy()
+            p = p_new.copy()
+        
+        elif Time_step_method == 'RK3':
+            rho_old = rho.copy()
+            rhou_old = rhou.copy()
+            for rk_step in range(3):
+                ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR = compute_flux_values(ur, rho, p)
+                flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
+                source_flux = compute_source_flux(r,fr,p_fL,p_fR,dV)
+                rhs = compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, dt)
+                if rk_step == 0:
+                    rho_new = rho_old + rhs[0,:]
+                    rhou_new = rhou_old + rhs[1,:]
+                elif rk_step == 1:
+                    rho_new = 0.75 * rho_old + 0.25 * (rho + rhs[0,:])
+                    rhou_new = 0.75 * rhou_old + 0.25 * (rhou + rhs[1,:])
+                elif rk_step == 2:
+                    rho_new = 1.0/3.0 * rho_old + 2.0/3.0 * (rho + rhs[0,:])
+                    rhou_new = 1.0/3.0 * rhou_old + 2.0/3.0 * (rhou + rhs[1,:])
+                rho = rho_new.copy()
+                rhou = rhou_new.copy()
+                ur = rhou/rho
+                p = rho * R * T ## PR EOS later
     
     # Compute the analytical solution
     if flag_analytic:
@@ -117,6 +143,7 @@ def main():
     plt.title('Euler equations in spherical coordinate system')
     plt.legend(loc='upper right')
     plt.show()
+
 
 def compute_flux_values(ur, rho, p):
    """ This function computes the values of phi and ur at the flux locations
