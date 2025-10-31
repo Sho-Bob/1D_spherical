@@ -26,7 +26,7 @@ def main():
     """
 
     # Set up grids and time
-    nt = 1500      ## number of time steps
+    nt = 2000      ## number of time steps
     nfr = 101      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
     CFL = 0.3      ## CFL number to determine time step size
@@ -39,7 +39,7 @@ def main():
     dV = np.zeros(nr)               ## Volume of the one cell
     dr = np.zeros(nr)               ## Distance between grid locations
     time = np.zeros(nt)             ## time array
-    Time_step_method = 'RK3'        ## Time step method: Euler or RK3
+    Time_step_method = 'Euler'        ## Time step method: Euler or RK3
 
     ### CO2 critical properties
     Tc = 304.1 # K
@@ -285,7 +285,7 @@ def compute_diffusion_term(ur,mu,fr,r, dr):
     # Compute the diffusion term
     # Use cell widths (dr) for the finite difference
     for i in range(nr):
-        cell_width = dr[i]  # fr[i+1] - fr[i]
+        cell_width = fr[i+1] - fr[i]
         diffusion_term[i] = 4.0/3.0 / r[i]**2 * ((mu * fr[i+1]**2*durdr[i+1] - mu*fr[i]**2*durdr[i])/cell_width - (mu*fr[i+1]*ur_at_flux[i+1] - mu*fr[i]*ur_at_flux[i])/cell_width)
     
     return diffusion_term   
@@ -318,7 +318,7 @@ def compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r,Delta_t
    for i in range(number_of_cells):
        rhs[0,i] = (flux[0,i+1] - flux[0,i]) / dV[i]
        if flag_force:
-        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i] - 1e-2/r[i]**2 
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i] - 1e-2/r[i]**5 
        else:
         rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i]
    return -rhs*Delta_t
