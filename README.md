@@ -11,7 +11,7 @@ A 1D finite volume method (FVM) solver for spherical coordinate systems with iso
 
 ## Files
 
-- `lin_adv.py`: Main 1D linear advection solver with 3D plotting
+- `lin_adv.py`: 1D linear advection solver
 - `Euler.py`: Euler equations solver
 - `NS.py`: Navier Stokes equations solver
 - `NS_pr.py`: Navier Stokes equations solver with Peng Robinson equation of state
