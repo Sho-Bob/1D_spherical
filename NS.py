@@ -25,12 +25,13 @@ def main():
     """
 
     # Set up grids and time
-    nt = 4000      ## number of time steps
-    nfr = 401      ## number of flux locations
+    nt = 1500      ## number of time steps
+    nfr = 101      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
-    CFL = 0.5      ## CFL number to determine time step size
+    CFL = 0.3      ## CFL number to determine time step size
     terminal_output_interval = 100  ## number of time steps to output the results to the terminal
-    fr = np.linspace(0.0, 6.0, nfr) ## flux locations
+    time_step = 0
+    fr = np.linspace(0.0, 1.0, nfr) ## flux locations
     r = np.zeros(nr)                ## grid locations
     flag_analytic = False           ## Flag to compute the analytical solution
     flag_upwind = True              ## Flag to use upwind scheme
@@ -60,6 +61,7 @@ def main():
     T = 1.0 ## Isothermal
     R = 1.0 ## Gas constant
     gamma = 1.4 ## Adiabatic index
+    mu = 1.0e-3 ## Dynamic viscosity: mu is assumed to be constant for now
 
     # Initialization of phi for now, Gaussian pulse
     # rho = np.exp(-(r - 0.5)**2 / 0.1**2)
@@ -72,11 +74,11 @@ def main():
 
     # Time loop starts here
     for itr in range(1,nt):
-
+        time_step += 1
         ## dt calc. with CFL 
         sound_speed = np.sqrt(gamma * R * T)
         max_wave_speed = np.max(np.abs(ur) + sound_speed)
-        dt = CFL * np.min(dr) / max_wave_speed
+        dt = compute_dt_from_CFL(CFL, max_wave_speed, dr, mu)
         time[itr] = time[itr-1] + dt
 
         if Time_step_method == 'Euler':
@@ -88,9 +90,13 @@ def main():
             # Compute the flux
             flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
             source_flux = compute_source_flux(r,fr,p_fL,p_fR,dV)
+
+            # Compute the diffusion term in the FDM manner
+            diffusion_term = compute_diffusion_term(ur,mu,fr,r,dr)
+            # diffusion_term = np.zeros(nr)
             
             # Compute the rhs
-            rhs = compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r, dt)
+            rhs = compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r, dt)
             
             # Update conservative variables
             rho_new = rho + rhs[0,:]
@@ -114,7 +120,8 @@ def main():
                 ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR = compute_flux_values(ur, rho, p)
                 flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
                 source_flux = compute_source_flux(r,fr,p_fL,p_fR,dV)
-                rhs = compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r, dt)
+                diffusion_term = compute_diffusion_term(ur,mu,fr,r,dr)
+                rhs = compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r, dt)
                 if rk_step == 0:
                     rho_new = rho_old + rhs[0,:]
                     rhou_new = rhou_old + rhs[1,:]
@@ -124,10 +131,21 @@ def main():
                 elif rk_step == 2:
                     rho_new = 1.0/3.0 * rho_old + 2.0/3.0 * (rho + rhs[0,:])
                     rhou_new = 1.0/3.0 * rhou_old + 2.0/3.0 * (rhou + rhs[1,:])
+                
+                # Update primitive variables
+                p_new = rho_new * R * T ## PR EOS later
+                ur_new = rhou_new/rho_new
+
+                # Update conservative variables
                 rho = rho_new.copy()
                 rhou = rhou_new.copy()
-                ur = rhou/rho
-                p = rho * R * T ## PR EOS later
+                ur = ur_new.copy()
+                p = p_new.copy()
+
+        
+        # Output the results to the terminal
+        if time_step % terminal_output_interval == 0:
+            output_terminal(time_step, rho, ur, p, time[itr])
     
     # Compute the analytical solution
     if flag_analytic:
@@ -177,13 +195,15 @@ def compute_flux_values(ur, rho, p):
        rho_fR[i] = rho[i]
        p_fR[i] = p[i]
 
-   ur_fL[0] = ur[0] ## Neuman BC
+   # Neumann BC
+#    ur_fL[0] = ur[0]
+
+   ## Dirichlet BC
+   ur_fL[0] = 0.0
    rho_fL[0] = rho[0] ## Neuman BC
    p_fL[0] = p[0] ## Neuman BC
-   ur_fR[0] = ur[0] ## 1st order
    rho_fR[0] = rho[0] ## 1st order
    p_fR[0] = p[0] ## 1st order
-
    ur_fL[nfr-1] = ur[ndr-1] ## 1st order
    rho_fL[nfr-1] = rho[ndr-1] ## 1st order
    p_fL[nfr-1] = p[ndr-1] ## 1st order
@@ -193,6 +213,12 @@ def compute_flux_values(ur, rho, p):
 
    return ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR
 
+
+def compute_dt_from_CFL(CFL, max_wave_speed, dr, mu):
+    """ This function computes the time step size from the CFL number"""
+    dt_conv = CFL * np.min(dr) / max_wave_speed
+    dt_visc = CFL * np.min(dr)**2 / mu
+    return min(dt_conv, dt_visc)
 
 def compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind):
    """ This function computes the flux at the flux locations"""
@@ -223,9 +249,37 @@ def compute_source_flux(r,fr,p_fL,p_fR,dV):
     for i in range(nfr):
         source_flux[i] = fr[i]**2 *0.5 * (p_fL[i] + p_fR[i]) 
     return source_flux
-   
 
-def compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r,Delta_t):
+def compute_diffusion_term(ur,mu,fr,r, dr):
+    """ This function computes the diffusion term in the FDM manner"""
+    nr = ur.shape[0]
+    nfr = fr.shape[0]
+    if nr != nfr - 1:
+        raise ValueError("The number of grid locations and the number of flux locations are not consistent")
+    diffusion_term = np.zeros(nr)
+    durdr = np.zeros(nfr)
+    ur_at_flux = np.zeros(nfr)
+
+    # Compute the values of ur and durdr at flux points
+    # Flux location i is between grid points i-1 and i
+    # Distance between grid points i-1 and i is 0.5*(dr[i] + dr[i-1]) = 0.5*(fr[i+1] - fr[i-1])
+    for i in range(1,nfr-1):
+        ur_at_flux[i] = 0.5 * (ur[i-1] + ur[i])
+        durdr[i] = (ur[i] - ur[i-1]) / (r[i] - r[i-1])
+    durdr[0] = ur[0]/r[0]
+    durdr[nfr-1] = 0.0    # Neumann BC
+    ur_at_flux[0] = ur[0] # Neumann BC
+    ur_at_flux[nfr-1] = ur[nr-1] # Neumann BC
+
+    # Compute the diffusion term
+    # Use cell widths (dr) for the finite difference
+    for i in range(nr):
+        cell_width = dr[i]  # fr[i+1] - fr[i]
+        diffusion_term[i] = 4.0/3.0 / r[i]**2 * ((mu * fr[i+1]**2*durdr[i+1] - mu*fr[i]**2*durdr[i])/cell_width - (mu*fr[i+1]*ur_at_flux[i+1] - mu*fr[i]*ur_at_flux[i])/cell_width)
+    
+    return diffusion_term   
+
+def compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r,Delta_t):
    """ This function computes the rhs of the Euler equations"""
    nfr = flux.shape[1]
    number_of_cells = len(dV)
@@ -237,10 +291,23 @@ def compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r,Delta_t):
    for i in range(number_of_cells):
        rhs[0,i] = (flux[0,i+1] - flux[0,i]) / dV[i]
        if flag_force:
-        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - 1e-2/r[i]**2 
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i] - 1e-2/r[i]**2 
        else:
-        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i])
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i]
    return -rhs*Delta_t
+
+def output_terminal(time_step, rho, ur, p, time):
+    """ This function outputs the results to the terminal"""
+    print(f'--------------------------------')
+    print(f'Time step: {time_step}')
+    print(f'Time: {time}')
+    print(f'Max rho: {np.max(rho)}')
+    print(f'Min rho: {np.min(rho)}')
+    print(f'Max ur: {np.max(ur)}')
+    print(f'Min ur: {np.min(ur)}')
+    print(f'Max p: {np.max(p)}')
+    print(f'Min p: {np.min(p)}')
+    print(f'--------------------------------')
 
 if __name__ == "__main__":
     main()
