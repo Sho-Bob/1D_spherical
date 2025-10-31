@@ -26,20 +26,24 @@ def main():
     """
 
     # Set up grids and time
-    nt = 2000      ## number of time steps
+    nt = 100      ## number of time steps
     nfr = 101      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
-    CFL = 0.3      ## CFL number to determine time step size
+    CFL = 0.5      ## CFL number to determine time step size
     terminal_output_interval = 100  ## number of time steps to output the results to the terminal
     time_step = 0
-    fr = np.linspace(0.0, 1.0, nfr) ## flux locations
+    fr = np.linspace(0.0, 1e-2, nfr) ## flux locations
     r = np.zeros(nr)                ## grid locations
     flag_analytic = False           ## Flag to compute the analytical solution
     flag_upwind = True              ## Flag to use upwind scheme
     dV = np.zeros(nr)               ## Volume of the one cell
     dr = np.zeros(nr)               ## Distance between grid locations
     time = np.zeros(nt)             ## time array
-    Time_step_method = 'Euler'        ## Time step method: Euler or RK3
+    Time_step_method = 'Euler'        ## Time step method: Euler or RK3 !!! If you use RK3, the source term should be separated from rhs calc.
+    if Time_step_method == 'RK3':
+        flag_force_term = False     ## Flag to include the force term in the rhs calc.
+    else:
+        flag_force_term = True
 
     ### CO2 critical properties
     Tc = 304.1 # K
@@ -107,7 +111,7 @@ def main():
             # diffusion_term = np.zeros(nr)
             
             # Compute the rhs
-            rhs = compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r, dt)
+            rhs = compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r, dt, flag_force_term)
             
             # Update conservative variables
             rho_new = rho + rhs[0,:]
@@ -132,7 +136,7 @@ def main():
                 flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
                 source_flux = compute_source_flux(r,fr,p_fL,p_fR,dV)
                 diffusion_term = compute_diffusion_term(ur,mu,fr,r,dr)
-                rhs = compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r, dt)
+                rhs = compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r, dt, flag_force_term)
                 if rk_step == 0:
                     rho_new = rho_old + rhs[0,:]
                     rhou_new = rhou_old + rhs[1,:]
@@ -152,6 +156,12 @@ def main():
                 rhou = rhou_new.copy()
                 ur = ur_new.copy()
                 p = p_new.copy()
+            
+            # Seprated source term calc with Euler method
+            rhou_new = rhou + dt * 1.0e-2/r**5
+            ur_new = rhou_new/rho
+            ur = ur_new.copy()
+            rhou = rhou_new.copy()
 
         
         # Output the results to the terminal
@@ -167,7 +177,7 @@ def main():
     # Plot the results
     # plt.plot(r, p,'k-',label=f'time = {time[itr]:.2f}')
     # plt.plot(r, p_initial,'k-.', label='initial')
-    plt.plot(r, rho,'k-',label=f'time = {time[itr]:.2f}')
+    plt.plot(r, rho,'k-',label=f'time = {time[itr]:.4f}')
     plt.plot(r, rho_initial,'k-.', label='initial')
     if flag_analytic:
         plt.plot(r, rho_analytical,'r--', label='analytical')
@@ -306,7 +316,7 @@ def Comp_sound_speed(rho,T):
         sound_speed[i] = pr.Get_sound_speed()
     return sound_speed
 
-def compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r,Delta_t):
+def compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r,Delta_t, flag_force):
    """ This function computes the rhs of the Euler equations"""
    nfr = flux.shape[1]
    number_of_cells = len(dV)
@@ -314,7 +324,6 @@ def compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r,Delta_t
     raise ValueError("The number of flux locations and the number of grid locations are not consistent")
    
    rhs = np.zeros((2,number_of_cells))
-   flag_force = True
    for i in range(number_of_cells):
        rhs[0,i] = (flux[0,i+1] - flux[0,i]) / dV[i]
        if flag_force:
