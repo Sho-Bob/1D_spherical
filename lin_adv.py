@@ -123,7 +123,7 @@ def compute_flux(ur_fL, phi_fL, ur_fR, phi_fR, fr):
    flux_upwind = np.zeros(nfr)
    flux_central = np.zeros(nfr)
    
-   flag_upwind = False
+   flag_upwind = True
    
    ### Assuming the advection speed is constant for now
    for i in range(nfr):
