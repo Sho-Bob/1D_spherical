@@ -26,7 +26,7 @@ def main():
     """
 
     # Set up grids and time
-    nt = 100      ## number of time steps
+    nt = 200      ## number of time steps
     nfr = 101      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
     CFL = 0.5      ## CFL number to determine time step size
@@ -39,7 +39,7 @@ def main():
     dV = np.zeros(nr)               ## Volume of the one cell
     dr = np.zeros(nr)               ## Distance between grid locations
     time = np.zeros(nt)             ## time array
-    Time_step_method = 'Euler'        ## Time step method: Euler or RK3 !!! If you use RK3, the source term should be separated from rhs calc.
+    Time_step_method = 'RK3'        ## Time step method: Euler or RK3 !!! If you use RK3, the source term should be separated from rhs calc.
     if Time_step_method == 'RK3':
         flag_force_term = False     ## Flag to include the force term in the rhs calc.
     else:
@@ -74,7 +74,7 @@ def main():
     T = 293.0 ## Isothermal
     R = 8.314 ## Gas constant
     gamma = 1.4 ## Adiabatic index
-    mu = 1.0e-5 ## Dynamic viscosity: mu is assumed to be constant for now
+    mu = 9.248e-5 ## Dynamic viscosity: mu is assumed to be constant for now from NIST data
     p_ini = 14.7 * 1e6 ## 147 bar
 
     # Initialization of phi for now, Gaussian pulse
