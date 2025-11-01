@@ -67,7 +67,7 @@ def main():
     R = 1.0 ## Gas constant
     gamma = 1.4 ## Adiabatic index
 
-    # Initialization of phi for now, Gaussian pulse
+    # Initialization of sod test problem
     for i in range(nr):
         if r[i] < 0.5:
             rho[i] = 1.0
@@ -87,6 +87,7 @@ def main():
     # Time loop starts here
     for itr in range(1,nt):
         time_step += 1
+        
         ## dt calc. with CFL 
         sound_speed = np.sqrt(gamma * p/rho)
         max_wave_speed = np.max(np.abs(ur) + sound_speed)
