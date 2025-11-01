@@ -26,11 +26,12 @@ def main():
 
     # Set up grids and time
     nt = 1500      ## number of time steps
-    nfr = 101      ## number of flux locations
+    nfr = 1001      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
-    CFL = 0.3      ## CFL number to determine time step size
-    terminal_output_interval = 100  ## number of time steps to output the results to the terminal
     time_step = 0
+    CFL = 0.7     ## CFL number to determine time step size
+    output_interval = 100  ## number of time steps to output the results to the file
+    terminal_output_interval = 100  ## number of time steps to output the results to the terminal
     fr = np.linspace(0.0, 1.0, nfr) ## flux locations
     r = np.zeros(nr)                ## grid locations
     flag_analytic = False           ## Flag to compute the analytical solution
@@ -54,21 +55,32 @@ def main():
     rhou = np.zeros(nr)
     ur = np.zeros(nr)
     p = np.zeros(nr)
+    rhoE = np.zeros(nr)
+    rhoE_old = rhoE.copy()
+    rhoE_new = rhoE.copy()
     rho_old = rho.copy()
     rhou_old = rhou.copy()
     rho_new = rho.copy()
     rhou_new = rhou.copy()
-    T = 1.0 ## Isothermal
+    T = np.zeros(nr)
+    T_new = np.zeros(nr)
     R = 1.0 ## Gas constant
     gamma = 1.4 ## Adiabatic index
-    mu = 1.0e-3 ## Dynamic viscosity: mu is assumed to be constant for now
 
     # Initialization of phi for now, Gaussian pulse
-    # rho = np.exp(-(r - 0.5)**2 / 0.1**2)
-
-    # ur = np.sin(2.0 * np.pi * r) # Sine wave for test: Compession of rho at r = 0.5
-    rhou = rho * ur
-    p = rho * R * T
+    for i in range(nr):
+        if r[i] < 0.5:
+            rho[i] = 1.0
+            ur[i] = 0.0
+            p[i] = 1.0
+            rhou[i] = rho[i] * ur[i]
+            rhoE[i] = rho[i] * (1.0/(gamma-1.0) * p[i]/rho[i] + 0.5 * ur[i]**2)
+        else:
+            rho[i] = 0.125
+            ur[i] = 0.0
+            p[i] = 0.1
+            rhou[i] = rho[i] * ur[i]
+            rhoE[i] = rho[i] * (1.0/(gamma-1.0) * p[i]/rho[i] + 0.5 * ur[i]**2)
     rho_initial = rho.copy()
     p_initial = p.copy()
 
@@ -76,9 +88,9 @@ def main():
     for itr in range(1,nt):
         time_step += 1
         ## dt calc. with CFL 
-        sound_speed = np.sqrt(gamma * R * T)
+        sound_speed = np.sqrt(gamma * p/rho)
         max_wave_speed = np.max(np.abs(ur) + sound_speed)
-        dt = compute_dt_from_CFL(CFL, max_wave_speed, dr, mu)
+        dt = CFL * np.min(dr) / max_wave_speed
         time[itr] = time[itr-1] + dt
 
         if Time_step_method == 'Euler':
@@ -90,85 +102,67 @@ def main():
             # Compute the flux
             flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
             source_flux = compute_source_flux(r,fr,p_fL,p_fR,dV)
-
-            # Compute the diffusion term in the FDM manner
-            diffusion_term = compute_diffusion_term(ur,mu,fr,r,dr)
-            # diffusion_term = np.zeros(nr)
             
             # Compute the rhs
-            rhs = compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r, dt)
+            rhs = compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r, dt)
             
             # Update conservative variables
             rho_new = rho + rhs[0,:]
             rhou_new = rhou + rhs[1,:]
+            rhoE_new = rhoE + rhs[2,:]
 
             # Update primitive variables
-            p_new = rho_new * R * T ## PR EOS later
             ur_new = rhou_new / rho_new
+            p_new = (gamma-1.0) * (rhoE_new - 0.5 * rho_new * ur_new**2)
 
             rho = rho_new.copy()
             rhou = rhou_new.copy()
+            rhoE = rhoE_new.copy()
             ur = ur_new.copy()
             p = p_new.copy()
         
         elif Time_step_method == 'RK3':
             rho_old = rho.copy()
             rhou_old = rhou.copy()
+            rhoE_old = rhoE.copy()
             for rk_step in range(3):
-                sound_speed = np.sqrt(gamma * R * T)
+                sound_speed = np.sqrt(gamma * p/rho)
                 max_wave_speed = np.max(np.abs(ur) + sound_speed)
                 ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR = compute_flux_values(ur, rho, p)
                 flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
                 source_flux = compute_source_flux(r,fr,p_fL,p_fR,dV)
-                diffusion_term = compute_diffusion_term(ur,mu,fr,r,dr)
-                rhs = compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r, dt)
+                rhs = compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r, dt)
                 if rk_step == 0:
                     rho_new = rho_old + rhs[0,:]
                     rhou_new = rhou_old + rhs[1,:]
+                    rhoE_new = rhoE_old + rhs[2,:]
                 elif rk_step == 1:
                     rho_new = 0.75 * rho_old + 0.25 * (rho + rhs[0,:])
                     rhou_new = 0.75 * rhou_old + 0.25 * (rhou + rhs[1,:])
+                    rhoE_new = 0.75 * rhoE_old + 0.25 * (rhoE + rhs[2,:])
                 elif rk_step == 2:
                     rho_new = 1.0/3.0 * rho_old + 2.0/3.0 * (rho + rhs[0,:])
                     rhou_new = 1.0/3.0 * rhou_old + 2.0/3.0 * (rhou + rhs[1,:])
-                
-                # Update primitive variables
-                p_new = rho_new * R * T ## PR EOS later
-                ur_new = rhou_new/rho_new
-
-                # Update conservative variables
+                    rhoE_new = 1.0/3.0 * rhoE_old + 2.0/3.0 * (rhoE + rhs[2,:])
                 rho = rho_new.copy()
                 rhou = rhou_new.copy()
-                ur = ur_new.copy()
-                p = p_new.copy()
-
+                rhoE = rhoE_new.copy()
+                ur = rhou/rho
+                p = (gamma-1.0) * (rhoE - 0.5 * rho * ur**2)
         
-        # Output the results to the terminal
-        if time_step % terminal_output_interval == 0:
+        # For comparison with other studies
+        if time[itr] >= 0.2:
+            break
+
+        if time_step % output_interval == 0:
             output_terminal(time_step, rho, ur, p, time[itr])
-    
     # Compute the analytical solution
     if flag_analytic:
         rho_analytical = rho_initial.copy()
         for i in range(nr):
             rho_analytical[i] = ((r[i]-time[itr-1])/r[i])**2 * np.exp(- (r[i]-time[itr-1]-0.5)**2 / 0.1**2)
 
-    # Plot the results
-    # plt.plot(r, p,'k-',label=f'time = {time[itr]:.2f}')
-    # plt.plot(r, p_initial,'k-.', label='initial')
-    plt.plot(r, rho,'k-',label=f'time = {time[itr]:.2f}')
-    plt.plot(r, rho_initial,'k-.', label='initial')
-    if flag_analytic:
-        plt.plot(r, rho_analytical,'r--', label='analytical')
-    plt.xlabel('r')
-    plt.ylabel('rho')
-    # plt.ylabel('Pressure')
-    plt.grid(True)
-    plt.xlim(0, np.max(r))
-    plt.title('Euler equations in spherical coordinate system')
-    plt.legend(loc='upper right')
-    # plt.savefig(f'./data/Euler_rho_time_{time[itr]:.2f}.png')
-    plt.show()
+    plot_data(rho, rho_initial, ur, p, p_initial, time[itr], r)
 
 
 def compute_flux_values(ur, rho, p):
@@ -195,15 +189,13 @@ def compute_flux_values(ur, rho, p):
        rho_fR[i] = rho[i]
        p_fR[i] = p[i]
 
-   # Neumann BC
-#    ur_fL[0] = ur[0]
-
-   ## Dirichlet BC
-   ur_fL[0] = 0.0
+   ur_fL[0] = ur[0] ## Neuman BC
    rho_fL[0] = rho[0] ## Neuman BC
    p_fL[0] = p[0] ## Neuman BC
+   ur_fR[0] = ur[0] ## 1st order
    rho_fR[0] = rho[0] ## 1st order
    p_fR[0] = p[0] ## 1st order
+
    ur_fL[nfr-1] = ur[ndr-1] ## 1st order
    rho_fL[nfr-1] = rho[ndr-1] ## 1st order
    p_fL[nfr-1] = p[ndr-1] ## 1st order
@@ -214,26 +206,24 @@ def compute_flux_values(ur, rho, p):
    return ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR
 
 
-def compute_dt_from_CFL(CFL, max_wave_speed, dr, mu):
-    """ This function computes the time step size from the CFL number"""
-    dt_conv = CFL * np.min(dr) / max_wave_speed
-    dt_visc = CFL * np.min(dr)**2 / mu
-    return min(dt_conv, dt_visc)
-
 def compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind):
    """ This function computes the flux at the flux locations"""
    nfr = len(fr)
-   flux_upwind = np.zeros((2,nfr))
-   flux_central = np.zeros((2,nfr))   
-   
+   flux_upwind = np.zeros((3,nfr))
+   flux_central = np.zeros((3,nfr))   
+   gamma = 1.4
    ## For upwind scheme, Lax-Friedrichs scheme is used
    for i in range(nfr):
+       rhoE_fL = rho_fL[i] * (1.0/(gamma-1.0) * p_fL[i]/rho_fL[i] + 0.5 * ur_fL[i]**2)
+       rhoE_fR = rho_fR[i] * (1.0/(gamma-1.0) * p_fR[i]/rho_fR[i] + 0.5 * ur_fR[i]**2)
        # This is upwind scheme
        flux_upwind[0,i] = fr[i]**2 * (0.5 * (ur_fL[i]*rho_fL[i] + ur_fR[i]*rho_fR[i]) - 0.5 * max_wave_speed * (rho_fR[i] - rho_fL[i]))
        flux_upwind[1,i] = fr[i]**2 * (0.5 * (ur_fL[i]**2*rho_fL[i] + p_fL[i] + ur_fR[i]**2*rho_fR[i] + p_fR[i]) - 0.5 * max_wave_speed * (ur_fR[i]*rho_fR[i] - ur_fL[i]*rho_fL[i]))
+       flux_upwind[2,i] = fr[i]**2 * (0.5 * (ur_fL[i]*(rhoE_fL + p_fL[i]) + ur_fR[i]*(rhoE_fR + p_fR[i])) - 0.5 * max_wave_speed * (rhoE_fR - rhoE_fL))
        # This is central scheme
        flux_central[0,i] = fr[i]**2 * 0.5 * (ur_fL[i]*rho_fL[i] + ur_fR[i]*rho_fR[i])
        flux_central[1,i] = fr[i]**2 * 0.5 * (ur_fL[i]**2*rho_fL[i] + p_fL[i] + ur_fR[i]**2*rho_fR[i] + p_fR[i])
+       flux_central[2,i] = fr[i]**2 * 0.5 * (ur_fL[i]*(rhoE_fL + p_fL[i]) + ur_fR[i]*(rhoE_fR + p_fR[i]))
     
    if flag_upwind:
        return flux_upwind
@@ -249,51 +239,24 @@ def compute_source_flux(r,fr,p_fL,p_fR,dV):
     for i in range(nfr):
         source_flux[i] = fr[i]**2 *0.5 * (p_fL[i] + p_fR[i]) 
     return source_flux
+   
 
-def compute_diffusion_term(ur,mu,fr,r, dr):
-    """ This function computes the diffusion term in the FDM manner"""
-    nr = ur.shape[0]
-    nfr = fr.shape[0]
-    if nr != nfr - 1:
-        raise ValueError("The number of grid locations and the number of flux locations are not consistent")
-    diffusion_term = np.zeros(nr)
-    durdr = np.zeros(nfr)
-    ur_at_flux = np.zeros(nfr)
-
-    # Compute the values of ur and durdr at flux points
-    # Flux location i is between grid points i-1 and i
-    # Distance between grid points i-1 and i is 0.5*(dr[i] + dr[i-1]) = 0.5*(fr[i+1] - fr[i-1])
-    for i in range(1,nfr-1):
-        ur_at_flux[i] = 0.5 * (ur[i-1] + ur[i])
-        durdr[i] = (ur[i] - ur[i-1]) / (r[i] - r[i-1])
-    durdr[0] = ur[0]/r[0]
-    durdr[nfr-1] = 0.0    # Neumann BC
-    ur_at_flux[0] = ur[0] # Neumann BC
-    ur_at_flux[nfr-1] = ur[nr-1] # Neumann BC
-
-    # Compute the diffusion term
-    # Use cell widths (dr) for the finite difference
-    for i in range(nr):
-        cell_width = dr[i]  # fr[i+1] - fr[i]
-        diffusion_term[i] = 4.0/3.0 / r[i]**2 * ((mu * fr[i+1]**2*durdr[i+1] - mu*fr[i]**2*durdr[i])/cell_width - (mu*fr[i+1]*ur_at_flux[i+1] - mu*fr[i]*ur_at_flux[i])/cell_width)
-    
-    return diffusion_term   
-
-def compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r,Delta_t):
+def compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r,Delta_t):
    """ This function computes the rhs of the Euler equations"""
    nfr = flux.shape[1]
    number_of_cells = len(dV)
    if nfr != number_of_cells+1:
     raise ValueError("The number of flux locations and the number of grid locations are not consistent")
    
-   rhs = np.zeros((2,number_of_cells))
-   flag_force = True
+   rhs = np.zeros((3,number_of_cells))
+   flag_force = False
    for i in range(number_of_cells):
        rhs[0,i] = (flux[0,i+1] - flux[0,i]) / dV[i]
+       rhs[2,i] = (flux[2,i+1] - flux[2,i]) / dV[i]
        if flag_force:
-        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] + (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i] - 1e-2/r[i]**2 
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - 1e-2/r[i]**2 
        else:
-        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] + (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i]
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] + (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i])
    return -rhs*Delta_t
 
 def output_terminal(time_step, rho, ur, p, time):
@@ -308,6 +271,60 @@ def output_terminal(time_step, rho, ur, p, time):
     print(f'Max p: {np.max(p)}')
     print(f'Min p: {np.min(p)}')
     print(f'--------------------------------')
+
+def plot_data(rho, rho_initial, ur, p, p_initial, time, r):
+    """ This function plots the data"""
+    fig = plt.figure(figsize=(13, 4))
+    data_loc = "./CO2_data_8MPa/SOD_AIAA.csv"
+    data = np.loadtxt(data_loc, delimiter=',')
+    r_data = data[:,0]
+    rho_data = data[:,1]
+
+    # Set font to Times New Roman with size 20
+    plt.rcParams['font.family'] = 'Times New Roman'
+    # plt.rcParams['font.size'] = 20
+
+    # Set math font to Times New Roman as well
+    plt.rcParams['mathtext.fontset'] = 'custom'
+    plt.rcParams['mathtext.rm'] = 'Times New Roman'
+    plt.rcParams['mathtext.it'] = 'Times New Roman:italic'
+    plt.rcParams['mathtext.bf'] = 'Times New Roman:bold'
+    # plt.style.use(['science', 'high-vis'])
+
+    # Enable LaTeX-like text rendering (matplotlib's built-in mathtext)
+    plt.rcParams['text.usetex'] = False    
+    fig.suptitle(f'Sod problem in spherical coordinate system at t = {time:.2f}', fontsize=14)
+    
+    # Plot density
+    plt.subplot(1,3,1)
+    plt.plot(r, rho, 'k-', label=f'time = {time:.2f}')
+    plt.plot(r_data,rho_data,'r--', label='Wang and Johnsen (2013)')
+    # plt.plot(r, rho_initial, 'k-.', label='initial')
+    plt.xlabel('r')
+    plt.ylabel(r'$\rho$')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot velocity
+    plt.subplot(1,3,2)
+    plt.plot(r, ur, 'k-', label=f'time = {time:.2f}')
+    plt.xlabel('r')
+    plt.ylabel(r'$u_r$')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot pressure
+    plt.subplot(1,3,3)
+    plt.plot(r, p, 'k-', label=f'time = {time:.2f}')
+    # plt.plot(r, p_initial, 'k-.', label='initial')
+    plt.xlabel('r')
+    plt.ylabel(r'$p$')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    plt.savefig(f'./data/Euler_rho_ur_p_time_{time:.2f}.png')
+    plt.show()
 
 if __name__ == "__main__":
     main()

@@ -165,6 +165,9 @@ if __name__ == "__main__":
     for i in range(len(T_pr)):
         rho_pr[i] = pr.Get_rho_from_P_and_T(P, T_pr[i])
         pr.Compute_cp_and_cv_from_rho_and_T(rho_pr[i], T_pr[i])
+        p_comp = pr.Get_P_from_rho_and_T(rho_pr[i], T_pr[i])
+        if p_comp!=P:
+            print(f'Error: p_comp = {p_comp} != P = {P}')
         cp_pr[i] = pr.cp
         sos_pr[i] = pr.sound_speed
     

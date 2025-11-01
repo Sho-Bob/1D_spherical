@@ -37,7 +37,7 @@ def main():
     dV = np.zeros(nr)               ## Volume of the one cell
     dr = np.zeros(nr)               ## Distance between grid locations
     time = np.zeros(nt)             ## time array
-    Time_step_method = 'RK3'        ## Time step method: Euler or RK3
+    Time_step_method = 'Euler'        ## Time step method: Euler or RK3
 
     # Compute grid locations and volumes
     r[0] = 0.5 * (fr[0] + fr[1])
@@ -135,22 +135,7 @@ def main():
         for i in range(nr):
             rho_analytical[i] = ((r[i]-time[itr-1])/r[i])**2 * np.exp(- (r[i]-time[itr-1]-0.5)**2 / 0.1**2)
 
-    # Plot the results
-    # plt.plot(r, p,'k-',label=f'time = {time[itr]:.2f}')
-    # plt.plot(r, p_initial,'k-.', label='initial')
-    plt.plot(r, rho,'k-',label=f'time = {time[itr]:.2f}')
-    plt.plot(r, rho_initial,'k-.', label='initial')
-    if flag_analytic:
-        plt.plot(r, rho_analytical,'r--', label='analytical')
-    plt.xlabel('r')
-    plt.ylabel('rho')
-    # plt.ylabel('Pressure')
-    plt.grid(True)
-    plt.xlim(0, np.max(r))
-    plt.title('Euler equations in spherical coordinate system')
-    plt.legend(loc='upper right')
-    # plt.savefig(f'./data/Euler_rho_time_{time[itr]:.2f}.png')
-    plt.show()
+    plot_data(rho, rho_initial, ur, p, p_initial, time, r)
 
 
 def compute_flux_values(ur, rho, p):
@@ -237,10 +222,51 @@ def compute_rhs(flux, source_flux, p_fL, p_fR, dV, fr, r,Delta_t):
    for i in range(number_of_cells):
        rhs[0,i] = (flux[0,i+1] - flux[0,i]) / dV[i]
        if flag_force:
-        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - 1e-2/r[i]**2 
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] + (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - 1e-2/r[i]**2 
        else:
-        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i])
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] + (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i])
    return -rhs*Delta_t
+
+def plot_data(rho, rho_initial, ur, p, p_initial, time, r):
+    """ This function plots the data"""
+    fig = plt.figure(figsize=(10, 10))
+    fig.suptitle('Euler equations in spherical coordinate system', fontsize=14)
+    
+    # Get the final time value (time is an array, we want the last value)
+    if isinstance(time, np.ndarray):
+        final_time = time[-1]
+    else:
+        final_time = time
+    
+    # Plot density
+    plt.subplot(3,1,1)
+    plt.plot(r, rho, 'k-', label=f'time = {final_time:.2f}')
+    plt.plot(r, rho_initial, 'k-.', label='initial')
+    plt.xlabel('r')
+    plt.ylabel('rho')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot velocity
+    plt.subplot(3,1,2)
+    plt.plot(r, ur, 'k-', label=f'time = {final_time:.2f}')
+    plt.xlabel('r')
+    plt.ylabel('ur')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot pressure
+    plt.subplot(3,1,3)
+    plt.plot(r, p, 'k-', label=f'time = {final_time:.2f}')
+    plt.plot(r, p_initial, 'k-.', label='initial')
+    plt.xlabel('r')
+    plt.ylabel('p')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    plt.savefig(f'./data/Euler_rho_ur_p_time_{final_time:.2f}.png')
+    plt.show()
 
 if __name__ == "__main__":
     main()

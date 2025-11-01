@@ -26,13 +26,13 @@ def main():
     """
 
     # Set up grids and time
-    nt = 200      ## number of time steps
+    nt = 1000      ## number of time steps
     nfr = 101      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
-    CFL = 0.5      ## CFL number to determine time step size
+    CFL = 0.4      ## CFL number to determine time step size
     terminal_output_interval = 100  ## number of time steps to output the results to the terminal
     time_step = 0
-    fr = np.linspace(0.0, 1e-2, nfr) ## flux locations
+    fr = np.linspace(0.0, 20e-10, nfr) ## flux locations
     r = np.zeros(nr)                ## grid locations
     flag_analytic = False           ## Flag to compute the analytical solution
     flag_upwind = True              ## Flag to use upwind scheme
@@ -75,6 +75,7 @@ def main():
     R = 8.314 ## Gas constant
     gamma = 1.4 ## Adiabatic index
     mu = 9.248e-5 ## Dynamic viscosity: mu is assumed to be constant for now from NIST data
+    mu = 1e-3
     p_ini = 14.7 * 1e6 ## 147 bar
 
     # Initialization of phi for now, Gaussian pulse
@@ -148,7 +149,7 @@ def main():
                     rhou_new = 1.0/3.0 * rhou_old + 2.0/3.0 * (rhou + rhs[1,:])
                 
                 # Update primitive variables
-                p_new = rho_new * R * T ## PR EOS later
+                p_new = compute_p_from_rho_and_T(rho_new,T)
                 ur_new = rhou_new/rho_new
 
                 # Update conservative variables
@@ -158,7 +159,7 @@ def main():
                 p = p_new.copy()
             
             # Seprated source term calc with Euler method
-            rhou_new = rhou + dt * 1.0e-2/r**5
+            rhou_new = rhou + dt * 40.0**2/(8.0*np.pi*1.256e-6)/r**5
             ur_new = rhou_new/rho
             ur = ur_new.copy()
             rhou = rhou_new.copy()
@@ -177,7 +178,7 @@ def main():
     # Plot the results
     # plt.plot(r, p,'k-',label=f'time = {time[itr]:.2f}')
     # plt.plot(r, p_initial,'k-.', label='initial')
-    plt.plot(r, rho,'k-',label=f'time = {time[itr]:.4f}')
+    plt.plot(r, rho,'k-',label=f'time = {time[itr]*1e12:.4f}')
     plt.plot(r, rho_initial,'k-.', label='initial')
     if flag_analytic:
         plt.plot(r, rho_analytical,'r--', label='analytical')
@@ -186,7 +187,7 @@ def main():
     # plt.ylabel('Pressure')
     plt.grid(True)
     plt.xlim(0, np.max(r))
-    plt.title('Euler equations in spherical coordinate system')
+    plt.title('NS_PR equations in spherical coordinate system')
     plt.legend(loc='upper right')
     # plt.savefig(f'./data/Euler_rho_time_{time[itr]:.2f}.png')
     plt.show()
@@ -316,6 +317,20 @@ def Comp_sound_speed(rho,T):
         sound_speed[i] = pr.Get_sound_speed()
     return sound_speed
 
+def compute_p_from_rho_and_T(rho,T):
+    """ This function computes the sound speed using PR EOS"""
+    Tc = 304.1 # K
+    Pc = 7.3825e6
+    omega = 0.225
+    M = 44.01
+    R = 8.314
+    pr = PR(Tc, Pc, omega, M, R)
+    ndr = np.shape(rho)[0]
+    p = np.zeros(ndr)
+    for i in range(ndr):
+        p[i] = pr.Get_P_from_rho_and_T(rho[i],T)
+    return p
+
 def compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r,Delta_t, flag_force):
    """ This function computes the rhs of the Euler equations"""
    nfr = flux.shape[1]
@@ -327,9 +342,9 @@ def compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r,Delta_t
    for i in range(number_of_cells):
        rhs[0,i] = (flux[0,i+1] - flux[0,i]) / dV[i]
        if flag_force:
-        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i] - 1e-2/r[i]**5 
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] + (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i] - 1e-2/r[i]**5 
        else:
-        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] - (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i]
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] + (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i]
    return -rhs*Delta_t
 
 def output_terminal(time_step, rho, ur, p, time):
