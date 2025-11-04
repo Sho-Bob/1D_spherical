@@ -148,7 +148,10 @@ class PengRobinson:
         alpha_rho = -1.0/self.rho * drhodT
         kappa_T = 1.0/(self.rho * dpdrho)
         self.cv = self.cp - T/self.rho *alpha_rho**2/kappa_T
-        self.sound_speed = np.sqrt(self.cp/self.cv * dpdrho)
+        if (self.cp/self.cv * dpdrho) < 0:
+            self.sound_speed = np.sqrt(abs(self.cp/self.cv * dpdrho))
+        else:
+            self.sound_speed = np.sqrt(self.cp/self.cv * dpdrho)
     
     def Get_sound_speed(self):
         return self.sound_speed

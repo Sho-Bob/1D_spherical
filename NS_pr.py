@@ -26,13 +26,14 @@ def main():
     """
 
     # Set up grids and time
-    nt = 300      ## number of time steps
-    nfr = 101      ## number of flux locations
+    nt = 100000      ## number of time steps
+    nfr = 201      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
-    CFL = 0.4      ## CFL number to determine time step size
+    CFL = 0.5      ## CFL number to determine time step size
     terminal_output_interval = 100  ## number of time steps to output the results to the terminal
+    restart_file_output_interval = 1000000 ## Number of time steps to output the restart file
     time_step = 0
-    fr = np.linspace(0.0, 20e-10, nfr) ## flux locations
+    fr = np.linspace(0.0, 10e-10, nfr) ## flux locations
     r = np.zeros(nr)                ## grid locations
     flag_analytic = False           ## Flag to compute the analytical solution
     flag_upwind = True              ## Flag to use upwind scheme
@@ -44,12 +45,27 @@ def main():
         flag_force_term = False     ## Flag to include the force term in the rhs calc.
     else:
         flag_force_term = True
+    
+    # This is for water force term
+    e_charge = 1.602e-19
+    alpha = 1.0
+    Q = 50.0 * e_charge 
+    epsilon = 81.0
+    epsilon0 = 8.85e-12
+    coeff_force = alpha*Q**2/(8.0*np.pi*epsilon0*epsilon)
 
     ### CO2 critical properties
-    Tc = 304.1 # K
-    Pc = 7.3825e6
-    omega = 0.225
-    M = 44.01
+    # Tc = 304.1 # K
+    # Pc = 7.3825e6
+    # omega = 0.225
+    # M = 44.01
+    
+    # Water critical properties
+    Tc = 647.1 # K
+    Pc = 22.064e6
+    omega = 0.344
+    M = 18.015
+
     R = 8.314
     pr = PR(Tc, Pc, omega, M, R)
 
@@ -74,12 +90,12 @@ def main():
     T = 293.0 ## Isothermal
     R = 8.314 ## Gas constant
     gamma = 1.4 ## Adiabatic index
-    mu = 9.248e-5 ## Dynamic viscosity: mu is assumed to be constant for now from NIST data
-    mu = 1e-3
-    p_ini = 14.7 * 1e6 ## 147 bar
+    # mu = 9.248e-5 ## Dynamic viscosity: mu is assumed to be constant for now from NIST data
+    mu = 0.0010024	## Dynamic viscosity of water at 293 K
+    # p_ini = 14.7 * 1e6 ## 147 bar for CO2
+    p_ini = 0.1e6 ## 1 bar for water
 
-    # Initialization of phi for now, Gaussian pulse
-    # rho = np.exp(-(r - 0.5)**2 / 0.1**2)
+    # Initialization of density
     rho_ini = pr.Get_rho_from_P_and_T(p_ini,T)
     rho = rho_ini * np.ones(nr)
     p = p_ini * np.ones(nr)
@@ -87,7 +103,7 @@ def main():
 
     rho_initial = rho.copy()
     p_initial = p.copy()
-
+    sim_time = 0.0
     # Time loop starts here
     for itr in range(1,nt):
         time_step += 1
@@ -96,6 +112,8 @@ def main():
         max_wave_speed = np.max(np.abs(ur) + sound_speed)
         dt = compute_dt_from_CFL(CFL, max_wave_speed, dr, mu)
         time[itr] = time[itr-1] + dt
+        sim_time += dt
+        # print(dt)
 
         if Time_step_method == 'Euler':
             # Explicit Euler method    
@@ -159,7 +177,8 @@ def main():
                 p = p_new.copy()
             
             # Seprated source term calc with Euler method
-            rhou_new = rhou + dt * 40.0**2/(8.0*np.pi*1.256e-6)/r**5
+
+            rhou_new = rhou + dt*coeff_force/r**5
             ur_new = rhou_new/rho
             ur = ur_new.copy()
             rhou = rhou_new.copy()
@@ -167,43 +186,13 @@ def main():
         
         # Output the results to the terminal
         if time_step % terminal_output_interval == 0:
-            output_terminal(time_step, rho, ur, p, time[itr])
+            output_terminal(time_step, rho, ur, p, sim_time)
+        
+        if time_step % restart_file_output_interval == 0:
+            output_restart_file(rho,ur,p,sim_time,r,fr)
     
-    # Compute the analytical solution
-    if flag_analytic:
-        rho_analytical = rho_initial.copy()
-        for i in range(nr):
-            rho_analytical[i] = ((r[i]-time[itr-1])/r[i])**2 * np.exp(- (r[i]-time[itr-1]-0.5)**2 / 0.1**2)
-
     # Plot the results
-    # Set font to Times New Roman with size 20
-    plt.rcParams['font.family'] = 'Times New Roman'
-    plt.rcParams['font.size'] = 12
-
-    # Set math font to Times New Roman as well
-    plt.rcParams['mathtext.fontset'] = 'custom'
-    plt.rcParams['mathtext.rm'] = 'Times New Roman'
-    plt.rcParams['mathtext.it'] = 'Times New Roman:italic'
-    plt.rcParams['mathtext.bf'] = 'Times New Roman:bold'
-    # plt.style.use(['science', 'high-vis'])
-
-    # Enable LaTeX-like text rendering (matplotlib's built-in mathtext)
-    plt.rcParams['text.usetex'] = False 
-    plt.plot(r, p,'k-')
-    # plt.plot(r, p_initial,'k-.', label='initial')
-    # plt.plot(r, rho,'k-')
-    # plt.plot(r, rho_initial,'k-.')
-    if flag_analytic:
-        plt.plot(r, rho_analytical,'r--', label='analytical')
-    plt.xlabel(r'$r$')
-    plt.ylabel(r'$p$')
-    # plt.ylabel('Pressure')
-    plt.grid(True)
-    plt.xlim(0, np.max(r))
-    plt.title('NS equations with PR EOS in spherical coordinate system')
-    plt.legend(loc='upper right')
-    # plt.savefig(f'./data/Euler_rho_time_{time[itr]:.2f}.png')
-    plt.show()
+    plot_data(rho, ur, p, time[itr], r)
 
 
 def compute_flux_values(ur, rho, p):
@@ -253,7 +242,8 @@ def compute_dt_from_CFL(CFL, max_wave_speed, dr, mu):
     """ This function computes the time step size from the CFL number"""
     dt_conv = CFL * np.min(dr) / max_wave_speed
     dt_visc = CFL * np.min(dr)**2 / mu
-    return min(dt_conv, dt_visc)
+    # return min(dt_conv, dt_visc)
+    return dt_conv
 
 def compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind):
    """ This function computes the flux at the flux locations"""
@@ -316,12 +306,20 @@ def compute_diffusion_term(ur,mu,fr,r, dr):
 
 def Comp_sound_speed(rho,T):
     """ This function computes the sound speed using PR EOS"""
-    Tc = 304.1 # K
-    Pc = 7.3825e6
-    omega = 0.225
-    M = 44.01
+    # CO2 critical properties
+    # Tc = 304.1 # K
+    # Pc = 7.3825e6
+    # omega = 0.225
+    # M = 44.01
+
+    # Water critical properties
+    Tc = 647.1 # K
+    Pc = 22.064e6
+    omega = 0.344
+    M = 18.015
+
     R = 8.314
-    P = 8.0e6
+    
     pr = PR(Tc, Pc, omega, M, R)
     ndr = np.shape(rho)[0]
     sound_speed = np.zeros(ndr)
@@ -332,10 +330,16 @@ def Comp_sound_speed(rho,T):
 
 def compute_p_from_rho_and_T(rho,T):
     """ This function computes the sound speed using PR EOS"""
-    Tc = 304.1 # K
-    Pc = 7.3825e6
-    omega = 0.225
-    M = 44.01
+    # Tc = 304.1 # K
+    # Pc = 7.3825e6
+    # omega = 0.225
+    # M = 44.01
+
+    # Water critical properties
+    Tc = 647.1 # K
+    Pc = 22.064e6
+    omega = 0.344
+    M = 18.015
     R = 8.314
     pr = PR(Tc, Pc, omega, M, R)
     ndr = np.shape(rho)[0]
@@ -351,14 +355,75 @@ def compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r,Delta_t
    if nfr != number_of_cells+1:
     raise ValueError("The number of flux locations and the number of grid locations are not consistent")
    
+   # This is for water
+   e_charge = 1.602e-19
+   alpha = 1.0
+   Q = 50.0 * e_charge 
+   epsilon = 81.0
+   epsilon0 = 8.85e-12
+   coeff_force = alpha*Q**2/(8.0*np.pi*epsilon0*epsilon)
+
    rhs = np.zeros((2,number_of_cells))
    for i in range(number_of_cells):
        rhs[0,i] = (flux[0,i+1] - flux[0,i]) / dV[i]
        if flag_force:
-        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] + (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i] - 1e-2/r[i]**5 
+        rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] + (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i] - coeff_force/r[i]**5 
        else:
         rhs[1,i] = (flux[1,i+1] - flux[1,i]) / dV[i] - (source_flux[i+1] - source_flux[i]) / dV[i] + (p_fR[i] - p_fL[i]) / (fr[i+1] - fr[i]) - diffusion_term[i]
    return -rhs*Delta_t
+
+
+def plot_data(rho, ur, p, time, r):
+    """ This function plots the data"""
+    fig = plt.figure(figsize=(13, 4))
+
+    # Set font to Times New Roman with size 20
+    plt.rcParams['font.family'] = 'Times New Roman'
+    plt.rcParams['font.size'] = 12
+
+    # Set math font to Times New Roman as well
+    plt.rcParams['mathtext.fontset'] = 'custom'
+    plt.rcParams['mathtext.rm'] = 'Times New Roman'
+    plt.rcParams['mathtext.it'] = 'Times New Roman:italic'
+    plt.rcParams['mathtext.bf'] = 'Times New Roman:bold'
+    # plt.style.use(['science', 'high-vis'])
+
+    # Enable LaTeX-like text rendering (matplotlib's built-in mathtext)
+    plt.rcParams['text.usetex'] = False    
+    fig.suptitle(f'NS problem in spherical coordinate system at t = {time:.2f}', fontsize=14)
+    
+    # Plot density
+    plt.subplot(1,3,1)
+    plt.plot(r, rho, 'k-', label=f'time = {time:.2f}')
+    plt.xlabel(r'$r$')
+    plt.ylabel(r'$\rho$')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot velocity
+    plt.subplot(1,3,2)
+    plt.plot(r, ur, 'k-', label=f'time = {time:.2f}')
+    plt.xlabel(r'$r$')
+    plt.ylabel(r'$u_r$')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot pressure
+    plt.subplot(1,3,3)
+    plt.plot(r, p, 'k-', label=f'time = {time:.2f}')
+    # plt.plot(r, p_initial, 'k-.', label='initial')
+    plt.xlabel(r'$r$')
+    plt.ylabel(r'$p$')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.tight_layout()
+    # plt.savefig(f'./data/Euler_rho_ur_p_time_{time:.2f}.png')
+    plt.show()
+
+def output_restart_file(rho,ur,p,time,r,fr):
+    """ This function outputs the restart file"""
+    np.savez(f'./data/NS_pr_restart_{time:.2f}.npz', rho=rho, ur=ur, p=p, time=time, r=r, fr=fr)
 
 def output_terminal(time_step, rho, ur, p, time):
     """ This function outputs the results to the terminal"""
