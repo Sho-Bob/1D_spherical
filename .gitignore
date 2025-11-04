@@ -1,1 +1,2 @@
-./data/
+data/NS_pr_restart_*.npz
+data/*.png

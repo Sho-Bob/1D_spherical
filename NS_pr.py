@@ -1,3 +1,4 @@
+from pickle import FALSE
 import numpy as np
 import matplotlib.pyplot as plt
 from PengRobinson import PengRobinson as PR 
@@ -26,17 +27,18 @@ def main():
     """
 
     # Set up grids and time
-    nt = 100000      ## number of time steps
-    nfr = 201      ## number of flux locations
+    nt = 1000000      ## number of time steps
+    nfr = 2001      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
     CFL = 0.5      ## CFL number to determine time step size
     terminal_output_interval = 100  ## number of time steps to output the results to the terminal
-    restart_file_output_interval = 1000000 ## Number of time steps to output the restart file
+    restart_file_output_interval = 1000 ## Number of time steps to output the restart file
     time_step = 0
-    fr = np.linspace(0.0, 10e-10, nfr) ## flux locations
+    fr = np.linspace(0.0, 20e-10, nfr) ## flux locations
     r = np.zeros(nr)                ## grid locations
     flag_analytic = False           ## Flag to compute the analytical solution
     flag_upwind = True              ## Flag to use upwind scheme
+    flag_restart = False             ## Flag to restart from the restart file
     dV = np.zeros(nr)               ## Volume of the one cell
     dr = np.zeros(nr)               ## Distance between grid locations
     time = np.zeros(nt)             ## time array
@@ -119,7 +121,7 @@ def main():
             # Explicit Euler method    
             # Compute the values of phi and ur at the flux locations
             # Reconstruct only primitive variables (rho, ur, P)
-            ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR = compute_flux_values(ur, rho, p)
+            ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR = compute_flux_values(ur, rho, p, rho_ini, p_ini)
             
             # Compute the flux
             flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
@@ -151,7 +153,7 @@ def main():
             for rk_step in range(3):
                 sound_speed = np.sqrt(gamma * R * T)
                 max_wave_speed = np.max(np.abs(ur) + sound_speed)
-                ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR = compute_flux_values(ur, rho, p)
+                ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR = compute_flux_values(ur, rho, p, rho_ini, p_ini)
                 flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
                 source_flux = compute_source_flux(r,fr,p_fL,p_fR,dV)
                 diffusion_term = compute_diffusion_term(ur,mu,fr,r,dr)
@@ -188,14 +190,15 @@ def main():
         if time_step % terminal_output_interval == 0:
             output_terminal(time_step, rho, ur, p, sim_time)
         
-        if time_step % restart_file_output_interval == 0:
-            output_restart_file(rho,ur,p,sim_time,r,fr)
+        if time_step % restart_file_output_interval == 0 or time_step == 1:
+            if flag_restart:
+                output_restart_file(rho,ur,p,time_step,r,fr,time[itr])
     
     # Plot the results
     plot_data(rho, ur, p, time[itr], r)
 
 
-def compute_flux_values(ur, rho, p):
+def compute_flux_values(ur, rho, p, rho_bc, p_bc):
    """ This function computes the values of phi and ur at the flux locations
        For now, its just first order reconstruction.
        ur_fL[0] and ur_fR[-1] are out of the computational domain, so we have to use the boundary conditons.
@@ -226,13 +229,17 @@ def compute_flux_values(ur, rho, p):
    ur_fL[0] = 0.0
    rho_fL[0] = rho[0] ## Neuman BC
    p_fL[0] = p[0] ## Neuman BC
+   ur_fR[0] = 0.0#ur[0] ## 1st order
    rho_fR[0] = rho[0] ## 1st order
    p_fR[0] = p[0] ## 1st order
+
    ur_fL[nfr-1] = ur[ndr-1] ## 1st order
    rho_fL[nfr-1] = rho[ndr-1] ## 1st order
    p_fL[nfr-1] = p[ndr-1] ## 1st order
    ur_fR[nfr-1] = ur[ndr-1] ## Neuman BC
    rho_fR[nfr-1] = rho[ndr-1] ## Neuman BC
+#    rho_fR[nfr-1] = rho_bc
+#    p_fR[nfr-1] = p_bc
    p_fR[nfr-1] = p[ndr-1] ## Neuman BC
 
    return ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR
@@ -252,14 +259,22 @@ def compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, f
    flux_central = np.zeros((2,nfr))   
    
    ## For upwind scheme, Lax-Friedrichs scheme is used
-   for i in range(nfr):
-       # This is upwind scheme
-       flux_upwind[0,i] = fr[i]**2 * (0.5 * (ur_fL[i]*rho_fL[i] + ur_fR[i]*rho_fR[i]) - 0.5 * max_wave_speed * (rho_fR[i] - rho_fL[i]))
-       flux_upwind[1,i] = fr[i]**2 * (0.5 * (ur_fL[i]**2*rho_fL[i] + p_fL[i] + ur_fR[i]**2*rho_fR[i] + p_fR[i]) - 0.5 * max_wave_speed * (ur_fR[i]*rho_fR[i] - ur_fL[i]*rho_fL[i]))
-       # This is central scheme
-       flux_central[0,i] = fr[i]**2 * 0.5 * (ur_fL[i]*rho_fL[i] + ur_fR[i]*rho_fR[i])
-       flux_central[1,i] = fr[i]**2 * 0.5 * (ur_fL[i]**2*rho_fL[i] + p_fL[i] + ur_fR[i]**2*rho_fR[i] + p_fR[i])
+#    for i in range(nfr):
+#        # This is upwind scheme
+#        flux_upwind[0,i] = fr[i]**2 * (0.5 * (ur_fL[i]*rho_fL[i] + ur_fR[i]*rho_fR[i]) - 0.5 * max_wave_speed * (rho_fR[i] - rho_fL[i]))
+#        flux_upwind[1,i] = fr[i]**2 * (0.5 * (ur_fL[i]**2*rho_fL[i] + p_fL[i] + ur_fR[i]**2*rho_fR[i] + p_fR[i]) - 0.5 * max_wave_speed * (ur_fR[i]*rho_fR[i] - ur_fL[i]*rho_fL[i]))
+#        # This is central scheme
+#        flux_central[0,i] = fr[i]**2 * 0.5 * (ur_fL[i]*rho_fL[i] + ur_fR[i]*rho_fR[i])
+#        flux_central[1,i] = fr[i]**2 * 0.5 * (ur_fL[i]**2*rho_fL[i] + p_fL[i] + ur_fR[i]**2*rho_fR[i] + p_fR[i])
+
+# This is upwind scheme
+   flux_upwind[0,:] = fr[:]**2 * (0.5 * (ur_fL[:]*rho_fL[:] + ur_fR[:]*rho_fR[:]) - 0.5 * max_wave_speed * (rho_fR[:] - rho_fL[:]))
+   flux_upwind[1,:] = fr[:]**2 * (0.5 * (ur_fL[:]**2*rho_fL[:] + p_fL[:] + ur_fR[:]**2*rho_fR[:] + p_fR[:]) - 0.5 * max_wave_speed * (ur_fR[:]*rho_fR[:] - ur_fL[:]*rho_fL[:]))
+   # This is central scheme
+   flux_central[0,:] = fr[:]**2 * 0.5 * (ur_fL[:]*rho_fL[:] + ur_fR[:]*rho_fR[:])
+   flux_central[1,:] = fr[:]**2 * 0.5 * (ur_fL[:]**2*rho_fL[:] + p_fL[:] + ur_fR[:]**2*rho_fR[:] + p_fR[:])
     
+   flux_upwind[0,0] = 0.0 # Dirichlet BC
    if flag_upwind:
        return flux_upwind
    else:
@@ -271,8 +286,10 @@ def compute_source_flux(r,fr,p_fL,p_fR,dV):
     nfr = len(fr)
     source_flux = np.zeros(nfr)
     ## For the source flux, just use the central scheme
-    for i in range(nfr):
-        source_flux[i] = fr[i]**2 *0.5 * (p_fL[i] + p_fR[i]) 
+    # for i in range(nfr):
+    #     source_flux[i] = fr[i]**2 *0.5 * (p_fL[i] + p_fR[i]) 
+    
+    source_flux[:] = fr[:]**2 * 0.5 * (p_fL[:] + p_fR[:]) # Dirichlet BC
     return source_flux
 
 def compute_diffusion_term(ur,mu,fr,r, dr):
@@ -421,9 +438,11 @@ def plot_data(rho, ur, p, time, r):
     # plt.savefig(f'./data/Euler_rho_ur_p_time_{time:.2f}.png')
     plt.show()
 
-def output_restart_file(rho,ur,p,time,r,fr):
+def output_restart_file(rho,ur,p,time_step,r,fr,time):
     """ This function outputs the restart file"""
-    np.savez(f'./data/NS_pr_restart_{time:.2f}.npz', rho=rho, ur=ur, p=p, time=time, r=r, fr=fr)
+    if time_step == 1:
+        time_step = 0
+    np.savez(f'./data/NS_pr_restart_{time_step}.npz', rho=rho, ur=ur, p=p, time_step=time_step, r=r, fr=fr, time = time)
 
 def output_terminal(time_step, rho, ur, p, time):
     """ This function outputs the results to the terminal"""
