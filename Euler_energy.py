@@ -1,11 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-"""This is a simple 1D linear advection FVM solver in spherical coordinate system by Sho Wada
-   Equation:
-   dphi/dt + 1/r^2 * d/dr(r^2 * ur * phi) = 0
-"""
-
 def main():
     """
     r is the grid locations, fr is the flux locations
@@ -87,7 +82,7 @@ def main():
     # Time loop starts here
     for itr in range(1,nt):
         time_step += 1
-        
+
         ## dt calc. with CFL 
         sound_speed = np.sqrt(gamma * p/rho)
         max_wave_speed = np.max(np.abs(ur) + sound_speed)
@@ -283,7 +278,7 @@ def plot_data(rho, rho_initial, ur, p, p_initial, time, r):
 
     # Set font to Times New Roman with size 20
     plt.rcParams['font.family'] = 'Times New Roman'
-    # plt.rcParams['font.size'] = 20
+    plt.rcParams['font.size'] = 12
 
     # Set math font to Times New Roman as well
     plt.rcParams['mathtext.fontset'] = 'custom'
@@ -301,7 +296,7 @@ def plot_data(rho, rho_initial, ur, p, p_initial, time, r):
     plt.plot(r, rho, 'k-', label=f'time = {time:.2f}')
     plt.plot(r_data,rho_data,'r--', label='Wang and Johnsen (2013)')
     # plt.plot(r, rho_initial, 'k-.', label='initial')
-    plt.xlabel('r')
+    plt.xlabel(r'$r$')
     plt.ylabel(r'$\rho$')
     plt.legend()
     plt.grid(True)
@@ -309,7 +304,7 @@ def plot_data(rho, rho_initial, ur, p, p_initial, time, r):
     # Plot velocity
     plt.subplot(1,3,2)
     plt.plot(r, ur, 'k-', label=f'time = {time:.2f}')
-    plt.xlabel('r')
+    plt.xlabel(r'$r$')
     plt.ylabel(r'$u_r$')
     plt.legend()
     plt.grid(True)
@@ -318,7 +313,7 @@ def plot_data(rho, rho_initial, ur, p, p_initial, time, r):
     plt.subplot(1,3,3)
     plt.plot(r, p, 'k-', label=f'time = {time:.2f}')
     # plt.plot(r, p_initial, 'k-.', label='initial')
-    plt.xlabel('r')
+    plt.xlabel(r'$r$')
     plt.ylabel(r'$p$')
     plt.legend()
     plt.grid(True)

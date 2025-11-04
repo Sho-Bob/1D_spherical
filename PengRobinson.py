@@ -99,10 +99,17 @@ class PengRobinson:
     
     def Compute_ideal_gas_prop(self,T):
         # --- NASA coefficients for CO2 (TP-2002-211556) ---
-        coeff_low  = np.array([3.85746029E+00, 4.41437026E-03, -2.21481404E-06,
-                            5.23490188E-10, -4.72084164E-14, -4.87591660E+04, 2.27163806E+01])
-        coeff_high = np.array([2.35677352E+00, 8.98459677E-03, -7.12356269E-06,
-                            2.45919022E-09, -1.43699548E-13, -4.83719697E+04, 9.90105222E+00])
+        # coeff_low  = np.array([3.85746029E+00, 4.41437026E-03, -2.21481404E-06,
+        #                     5.23490188E-10, -4.72084164E-14, -4.87591660E+04, 2.27163806E+01])
+        # coeff_high = np.array([2.35677352E+00, 8.98459677E-03, -7.12356269E-06,
+        #                     2.45919022E-09, -1.43699548E-13, -4.83719697E+04, 9.90105222E+00])
+        # T_mid = 1000.0  # K
+
+        # Water
+        coeff_low  = np.array([ 3.85746029E+00,  4.41437026E-03, -2.21481404E-06,
+                            5.23490188E-10, -4.72084164E-14, -4.87591660E+04,  2.27163806E+01 ])
+        coeff_high = np.array([ 2.35677352E+00,  8.98459677E-03, -7.12356269E-06,
+                            2.45919022E-09, -1.43699548E-13, -4.83719697E+04,  9.90105222E+00 ])
         T_mid = 1000.0  # K
         # --- Gas constant --- 
         R = self.R / self.Mw  # J/(kg*K)
@@ -153,11 +160,18 @@ if __name__ == "__main__":
     Pc = 7.3825e6
     omega = 0.225
     M = 44.01
+
+    #Water critical properties
+    Tc = 647.1 # K
+    Pc = 22.064e6
+    omega = 0.344
+    M = 18.015
+
     R = 8.314
-    P = 8.0e6
+    P = 0.1e6
     
     # Calculate density using Peng-Robinson EOS
-    T_pr = np.linspace(200, 400, 100)
+    T_pr = np.linspace(300, 400, 100)
     rho_pr = np.zeros_like(T_pr)
     cp_pr = np.zeros_like(T_pr)
     sos_pr = np.zeros_like(T_pr)
@@ -166,8 +180,6 @@ if __name__ == "__main__":
         rho_pr[i] = pr.Get_rho_from_P_and_T(P, T_pr[i])
         pr.Compute_cp_and_cv_from_rho_and_T(rho_pr[i], T_pr[i])
         p_comp = pr.Get_P_from_rho_and_T(rho_pr[i], T_pr[i])
-        if p_comp!=P:
-            print(f'Error: p_comp = {p_comp} != P = {P}')
         cp_pr[i] = pr.cp
         sos_pr[i] = pr.sound_speed
     
@@ -204,11 +216,11 @@ if __name__ == "__main__":
     cv_nist = np.array(cv_nist)
     # Create the plot
     plt.figure(figsize=(8, 6))
-    plt.plot(T_nist, rho_nist, 'b-', linewidth=2, label='NIST Data (8 MPa)')
+    # plt.plot(T_nist, rho_nist, 'b-', linewidth=2, label='NIST Data (8 MPa)')
     plt.plot(T_pr, rho_pr, 'r--', linewidth=2, label='Peng-Robinson EOS')
     plt.xlabel('Temperature (K)', fontsize=12)
     plt.ylabel('Density (kg/m³)', fontsize=12)
-    plt.xlim(220, 400)
+    # plt.xlim(220, 400)
     plt.title('CO₂ Density vs Temperature at 8 MPa', fontsize=14)
     plt.grid(True, alpha=0.3)
     plt.legend(fontsize=11)

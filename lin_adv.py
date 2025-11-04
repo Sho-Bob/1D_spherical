@@ -25,7 +25,7 @@ def main():
     """
 
     # Set up grids and time
-    nt = 300       ## number of time steps
+    nt = 100       ## number of time steps
     nfr = 101      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
     CFL = 0.5      ## CFL number to determine time step size
@@ -123,7 +123,7 @@ def compute_flux(ur_fL, phi_fL, ur_fR, phi_fR, fr):
    flux_upwind = np.zeros(nfr)
    flux_central = np.zeros(nfr)
    
-   flag_upwind = True
+   flag_upwind = False
    
    ### Assuming the advection speed is constant for now
    for i in range(nfr):

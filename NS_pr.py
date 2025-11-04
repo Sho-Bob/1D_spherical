@@ -26,7 +26,7 @@ def main():
     """
 
     # Set up grids and time
-    nt = 1000      ## number of time steps
+    nt = 300      ## number of time steps
     nfr = 101      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
     CFL = 0.4      ## CFL number to determine time step size
@@ -176,18 +176,31 @@ def main():
             rho_analytical[i] = ((r[i]-time[itr-1])/r[i])**2 * np.exp(- (r[i]-time[itr-1]-0.5)**2 / 0.1**2)
 
     # Plot the results
-    # plt.plot(r, p,'k-',label=f'time = {time[itr]:.2f}')
+    # Set font to Times New Roman with size 20
+    plt.rcParams['font.family'] = 'Times New Roman'
+    plt.rcParams['font.size'] = 12
+
+    # Set math font to Times New Roman as well
+    plt.rcParams['mathtext.fontset'] = 'custom'
+    plt.rcParams['mathtext.rm'] = 'Times New Roman'
+    plt.rcParams['mathtext.it'] = 'Times New Roman:italic'
+    plt.rcParams['mathtext.bf'] = 'Times New Roman:bold'
+    # plt.style.use(['science', 'high-vis'])
+
+    # Enable LaTeX-like text rendering (matplotlib's built-in mathtext)
+    plt.rcParams['text.usetex'] = False 
+    plt.plot(r, p,'k-')
     # plt.plot(r, p_initial,'k-.', label='initial')
-    plt.plot(r, rho,'k-',label=f'time = {time[itr]*1e12:.4f}')
-    plt.plot(r, rho_initial,'k-.', label='initial')
+    # plt.plot(r, rho,'k-')
+    # plt.plot(r, rho_initial,'k-.')
     if flag_analytic:
         plt.plot(r, rho_analytical,'r--', label='analytical')
-    plt.xlabel('r')
-    plt.ylabel('rho')
+    plt.xlabel(r'$r$')
+    plt.ylabel(r'$p$')
     # plt.ylabel('Pressure')
     plt.grid(True)
     plt.xlim(0, np.max(r))
-    plt.title('NS_PR equations in spherical coordinate system')
+    plt.title('NS equations with PR EOS in spherical coordinate system')
     plt.legend(loc='upper right')
     # plt.savefig(f'./data/Euler_rho_time_{time[itr]:.2f}.png')
     plt.show()
