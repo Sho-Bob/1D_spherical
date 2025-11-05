@@ -102,14 +102,10 @@ def main():
     R = 8.314 ## Gas constant
     gamma = 1.4 ## Adiabatic index
 
+    
     # Initialization of density
     rho_ini = pr.Get_rho_from_P_and_T(p_ini,T)
-    # print(rho_ini)
-    # return
-    rho = rho_ini * np.ones(nr)
-    p = p_ini * np.ones(nr)
-    rhou = rho * ur
-
+    rho, rhou, ur, p = initialize(T,p_ini,nr,rho_ini)
     rho_initial = rho.copy()
     p_initial = p.copy()
     sim_time = 0.0
@@ -454,6 +450,14 @@ def output_terminal(time_step, rho, ur, p, time):
     print(f'Max p: {np.max(p)}')
     print(f'Min p: {np.min(p)}')
     print(f'--------------------------------')
+
+def initialize(T,p_ini,nr,rho_ini):
+    """ This function initializes the density, velocity, pressure and rhou"""
+    rho = rho_ini * np.ones(nr)
+    ur = np.zeros(nr)
+    rhou = rho * ur
+    p = p_ini * np.ones(nr)
+    return rho, rhou, ur, p
 
 if __name__ == "__main__":
     main()
