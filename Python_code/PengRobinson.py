@@ -1,5 +1,4 @@
 import numpy as np
-from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
 class PengRobinson:
     def __init__(self, Tc, Pc, omega, M, R=8.314):
@@ -25,20 +24,75 @@ class PengRobinson:
         self.h = 0.0
         self.s = 0.0
         self.rho = 0.0
+        self.rho_sat_liq = 0.0
+        self.rho_sat_gas = 0.0
+        self.P_sat = 3.17e3
+        self.T_sat = 298.0
 
         # Calculate PR parameters a and b
         self.a = 0.45724 * (R * Tc)**2 / Pc
         self.b = 0.07780 * R * Tc / Pc
         self.kappa = 0.37464 + 1.54226 * omega - 0.26992 * omega**2
+        self.Get_rho_sat_from_P() # Compute two densities at saturation pressure
+        # print(self.rho_sat_liq, self.rho_sat_gas)
     
     def Get_P_from_rho_and_T(self, rho, T):
         """
         Calculate pressure from density and temperature using PR EOS.
         """
+        # if (rho < self.rho_sat_gas or rho > self.rho_sat_liq):
+        #     alpha_T = self.alpha_from_T(T)
+        #     molar_volume = self.Mw/ rho
+        #     P = (self.R * T) / (molar_volume - self.b) - (self.a * alpha_T) / (molar_volume**2 + 2*self.b*molar_volume - self.b**2)
+        # else:
+        #     P = self.P_sat
         alpha_T = self.alpha_from_T(T)
         molar_volume = self.Mw/ rho
         P = (self.R * T) / (molar_volume - self.b) - (self.a * alpha_T) / (molar_volume**2 + 2*self.b*molar_volume - self.b**2)
         return P
+    
+    def Get_P_from_rho_and_T_with_saturation(self, rho, T):
+        """
+        Calculate pressure from density and temperature using PR EOS.
+        """
+        if (rho < self.rho_sat_gas or rho > self.rho_sat_liq):
+            alpha_T = self.alpha_from_T(T)
+            molar_volume = self.Mw/ rho
+            P = (self.R * T) / (molar_volume - self.b) - (self.a * alpha_T) / (molar_volume**2 + 2*self.b*molar_volume - self.b**2)
+        else:
+            P = self.P_sat
+        return P
+
+    def Get_rho_sat_from_P(self):
+        """Compute two densities at saturation pressure"""
+        alpha_T = self.alpha_from_T(self.T_sat)
+        A = self.a * alpha_T * self.P_sat / (self.R * self.T_sat)**2
+        B = self.b * self.P_sat / (self.R * self.T_sat)
+        
+        # Coefficients of cubic equation: Z^3 + c2*Z^2 + c1*Z + c0 = 0
+        c2 = B - 1.0
+        c1 = A - 3.0*B**2 - 2.0*B
+        c0 = B**3 + B**2 - A*B
+        
+        # Solve cubic equation
+        coeffs = [1.0, c2, c1, c0]
+        roots = np.roots(coeffs)
+        real_roots = roots[np.abs(roots.imag) < 1e-10].real
+        
+        if len(real_roots) == 0:
+            raise ValueError("No real roots found for compressibility factor")
+        
+        lnphi = np.zeros(real_roots.size)
+        V = np.zeros(real_roots.size)
+        imin = 0
+        for i in range(real_roots.size):
+            V[i] = self.R * self.T_sat * real_roots[i] / self.P_sat # three candidates for V
+            lnphi[i] = real_roots[i] - 1.0 - np.log(real_roots[i] - B) - A / B * np.log(1.0 + B / real_roots[i])
+        V_vapor = np.max(V)
+        V_liquid = np.min(V)
+        # print(V)
+        self.rho_sat_liq = self.Mw / V_liquid
+        self.rho_sat_gas = self.Mw / V_vapor
     
     def Get_rho_from_P_and_T(self, P, T):
         """

@@ -2,6 +2,7 @@ from pickle import FALSE
 import numpy as np
 import matplotlib.pyplot as plt
 from PengRobinson import PengRobinson as PR 
+from Tait import Tait as tait
 
 """This is a simple 1D linear advection FVM solver in spherical coordinate system by Sho Wada
    Equation:
@@ -27,20 +28,21 @@ def main():
     """
 
     # Set up grids and time
-    nt = 100000      ## number of time steps
-    nfr = 501      ## number of flux locations
+    nt = 1000      ## number of time steps
+    nfr = 301      ## number of flux locations
     nr = nfr - 1   ## number of grid locations
     CFL = 0.5      ## CFL number to determine time step size
     terminal_output_interval = 100  ## number of time steps to output the results to the terminal
     restart_file_output_interval = 1000 ## Number of time steps to output the restart file
     time_step = 0
-    fr = np.linspace(0.0, 20e-10, nfr) ## flux locations
+    fr = np.linspace(0.0, 10e-10, nfr) ## flux locations
     r = np.zeros(nr)                ## grid locations
     flag_analytic = False           ## Flag to compute the analytical solution
     flag_upwind = True              ## Flag to use upwind scheme
     flag_restart = False             ## Flag to restart from the restart file
     fluid = 'water'                ## Fluid name: water or CO2
     output_file_name = 'water_1bar'
+    EOS = 'PR'     # PR or Tait or ideal
     # mu = 9.248e-5 ## Dynamic viscosity: mu is assumed to be constant for now from NIST data
     mu = 0.0010024	## Dynamic viscosity of water at 293 K
     # p_ini = 14.7 * 1e6 ## 147 bar for CO2
@@ -79,6 +81,7 @@ def main():
 
     R = 8.314
     pr = PR(Tc, Pc, omega, M, R)
+    tait_eos = tait()
 
     # Compute grid locations and volumes
     r[0] = 0.5 * (fr[0] + fr[1])
@@ -98,13 +101,18 @@ def main():
     rhou_old = rhou.copy()
     rho_new = rho.copy()
     rhou_new = rhou.copy()
-    T = 293.0 ## Isothermal
+    T = 298.0 ## Isothermal
     R = 8.314 ## Gas constant
     gamma = 1.4 ## Adiabatic index
 
     
     # Initialization of density
-    rho_ini = pr.Get_rho_from_P_and_T(p_ini,T)
+    if EOS == 'PR':
+        rho_ini = pr.Get_rho_from_P_and_T(p_ini,T)
+    elif EOS == 'Tait':
+        rho_ini = tait_eos.Get_rho_from_P(p_ini)
+    else:
+        raise ValueError("Invalid EOS")
     rho, rhou, ur, p = initialize(T,p_ini,nr,rho_ini)
     rho_initial = rho.copy()
     p_initial = p.copy()
@@ -113,11 +121,11 @@ def main():
     for itr in range(1,nt):
         time_step += 1
         ## dt calc. with CFL 
-        sound_speed = Comp_sound_speed(rho,T,fluid)
+        sound_speed = Comp_sound_speed(rho,T,fluid, EOS)
         max_wave_speed = np.max(np.abs(ur) + sound_speed)
         dt = compute_dt_from_CFL(CFL, max_wave_speed, dr, mu)
         if(time_step == 1):
-            dt = 1e-20
+            dt = 1e-21
         time[itr] = time[itr-1] + dt
         sim_time += dt
         # print(dt)
@@ -144,7 +152,7 @@ def main():
             rhou_new = rhou + rhs[1,:]
 
             # Update primitive variables
-            p_new = compute_p_from_rho_and_T(rho_new,T,fluid)
+            p_new = compute_p_from_rho_and_T(rho_new,T,fluid, EOS)
             ur_new = rhou_new / rho_new
 
             rho = rho_new.copy()
@@ -156,7 +164,7 @@ def main():
             rho_old = rho.copy()
             rhou_old = rhou.copy()
             for rk_step in range(3):
-                sound_speed = np.sqrt(gamma * R * T)
+                sound_speed = Comp_sound_speed(rho,T,fluid, EOS)
                 max_wave_speed = np.max(np.abs(ur) + sound_speed)
                 ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR = compute_flux_values(ur, rho, p, rho_ini, p_ini)
                 flux = compute_flux(max_wave_speed, ur_fL, rho_fL, p_fL, ur_fR, rho_fR, p_fR, fr, flag_upwind)
@@ -174,7 +182,10 @@ def main():
                     rhou_new = 1.0/3.0 * rhou_old + 2.0/3.0 * (rhou + rhs[1,:])
                 
                 # Update primitive variables
-                p_new = compute_p_from_rho_and_T(rho_new,T,fluid)
+                # if np.any(rho_new > 950.0):
+                    # print(rho_new)
+                    # raise ValueError("Density is greater than 950.0")
+                p_new = compute_p_from_rho_and_T(rho_new,T,fluid, EOS)
                 ur_new = rhou_new/rho_new
 
                 # Update conservative variables
@@ -184,8 +195,8 @@ def main():
                 p = p_new.copy()
             
             # Seprated source term calc with Euler method
-
             rhou_new = rhou + dt*coeff_force/r**5
+            # rhou_new = rhou - dt*coeff_force/(r**2)/dV
             ur_new = rhou_new/rho
             ur = ur_new.copy()
             rhou = rhou_new.copy()
@@ -317,7 +328,7 @@ def compute_diffusion_term(ur,mu,fr,r, dr):
     
     return diffusion_term   
 
-def Comp_sound_speed(rho,T,fluid):
+def Comp_sound_speed(rho,T,fluid, EOS):
     """ This function computes the sound speed using PR EOS"""
     if fluid == 'CO2':
         Tc = 304.1 # K
@@ -332,14 +343,20 @@ def Comp_sound_speed(rho,T,fluid):
     R = 8.314
     
     pr = PR(Tc, Pc, omega, M, R)
+    tait_eos = tait()
     ndr = np.shape(rho)[0]
     sound_speed = np.zeros(ndr)
     for i in range(ndr):
-        pr.Compute_cp_and_cv_from_rho_and_T(rho[i],T)
-        sound_speed[i] = pr.Get_sound_speed()
+        if EOS == 'PR':
+            pr.Compute_cp_and_cv_from_rho_and_T(rho[i],T)
+            sound_speed[i] = pr.Get_sound_speed()
+        elif EOS == 'Tait':
+            sound_speed[i] = tait_eos.Get_sound_speed(rho[i])
+        else:
+            raise ValueError("Invalid EOS")
     return sound_speed
 
-def compute_p_from_rho_and_T(rho,T,fluid):
+def compute_p_from_rho_and_T(rho,T,fluid, EOS):
     """ This function computes the sound speed using PR EOS"""
     if fluid == 'CO2':
         Tc = 304.1 # K
@@ -353,10 +370,20 @@ def compute_p_from_rho_and_T(rho,T,fluid):
         M = 18.015
     R = 8.314
     pr = PR(Tc, Pc, omega, M, R)
+    tait_eos = tait()
     ndr = np.shape(rho)[0]
     p = np.zeros(ndr)
     for i in range(ndr):
-        p[i] = pr.Get_P_from_rho_and_T(rho[i],T)
+        if EOS == 'PR':
+            # p[i] = pr.Get_P_from_rho_and_T(rho[i],T)
+            p[i] = pr.Get_P_from_rho_and_T_with_saturation(rho[i],T)
+            # if(p[i] < 0.0):
+            #     print(rho[i],T,p[i])
+            #     raise ValueError("Pressure is negative")
+        elif EOS == 'Tait':
+            p[i] = tait_eos.Get_P_from_rho(rho[i])
+        else:
+            raise ValueError("Invalid EOS")
     return p
 
 def compute_rhs(flux, source_flux, diffusion_term, p_fL, p_fR, dV, fr, r,Delta_t, flag_force):
@@ -405,7 +432,7 @@ def plot_data(rho, ur, p, time, r):
     
     # Plot density
     plt.subplot(1,3,1)
-    plt.plot(r, rho, 'k-', label=f'time = {time:.2f}')
+    plt.plot(r, rho, 'k-', label=f'time = {time*1e19:.2f}')
     plt.xlabel(r'$r$')
     plt.ylabel(r'$\rho$')
     plt.legend()
@@ -413,7 +440,7 @@ def plot_data(rho, ur, p, time, r):
     
     # Plot velocity
     plt.subplot(1,3,2)
-    plt.plot(r, ur, 'k-', label=f'time = {time:.2f}')
+    plt.plot(r, ur, 'k-', label=f'time = {time*1e19:.2f}')
     plt.xlabel(r'$r$')
     plt.ylabel(r'$u_r$')
     plt.legend()
@@ -421,7 +448,7 @@ def plot_data(rho, ur, p, time, r):
     
     # Plot pressure
     plt.subplot(1,3,3)
-    plt.plot(r, p, 'k-', label=f'time = {time:.2f}')
+    plt.plot(r, p, 'k-', label=f'time = {time*1e19:.2f}')
     # plt.plot(r, p_initial, 'k-.', label='initial')
     plt.xlabel(r'$r$')
     plt.ylabel(r'$p$')
@@ -449,6 +476,7 @@ def output_terminal(time_step, rho, ur, p, time):
     print(f'Min ur: {np.min(ur)}')
     print(f'Max p: {np.max(p)}')
     print(f'Min p: {np.min(p)}')
+    print(f'Density at min P: {rho[np.argmin(p)]}, Pressure at min P: {p[np.argmin(p)]}')
     print(f'--------------------------------')
 
 def initialize(T,p_ini,nr,rho_ini):
